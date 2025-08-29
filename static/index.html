@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>LM Studio Web Chat</title>
+<style>
+  body{font:14px system-ui,sans-serif;margin:0;background:#111;color:#eee}
+  #wrap{max-width:800px;margin:24px auto;padding:0 16px}
+  #log{border:1px solid #333;padding:12px;min-height:360px;background:#0c0c0c}
+  .u{color:#9ad;margin:8px 0;white-space:pre-wrap}
+  .a{color:#cfc;margin:8px 0;white-space:pre-wrap}
+  #bar{display:flex;gap:8px;margin-top:12px}
+  textarea{flex:1;height:70px;background:#181818;color:#eee;border:1px solid #333;padding:8px}
+  button{width:120px;background:#2a6;color:#fff;border:0;cursor:pointer}
+</style>
+<div id="wrap">
+  <h2>LM Studio Web Chat</h2>
+  <div id="log"></div>
+  <div id="bar">
+    <textarea id="msg" placeholder="Ask something…"></textarea>
+    <button id="send">Send</button>
+  </div>
+</div>
+<script>
+  const log=document.getElementById('log'),msg=document.getElementById('msg'),send=document.getElementById('send');let thread=null;
+  function append(role,text){const d=document.createElement('div');d.className=role==='user'?'u':'a';d.textContent=(role==='user'?'You: ':'Assistant: ')+text;log.appendChild(d);log.scrollTop=log.scrollHeight;}
+  async function postChat(text){
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({thread,message:text})});
+    const j=await r.json(); thread=j.thread; return j.answer;
+  }
+  send.onclick=async()=>{const t=msg.value.trim();if(!t)return;append('user',t);msg.value='';send.disabled=true;send.textContent='…';
+    try{const a=await postChat(t);append('assistant',a||'[no content]');}catch(e){append('assistant','Error: '+(e.message||e));}
+    finally{send.disabled=false;send.textContent='Send';}};
+  msg.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')send.click();});
+</script>
