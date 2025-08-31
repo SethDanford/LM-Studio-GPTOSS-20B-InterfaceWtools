@@ -21,7 +21,15 @@
 </div>
 <script>
   const log=document.getElementById('log'),msg=document.getElementById('msg'),send=document.getElementById('send');let thread=null;
-  function append(role,text){const d=document.createElement('div');d.className=role==='user'?'u':'a';d.textContent=(role==='user'?'You: ':'Assistant: ')+text;log.appendChild(d);log.scrollTop=log.scrollHeight;}
+  function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+  function linkify(s){return s.replace(/https?:\/\/[\w.-]+(?:\/[\w\-._~:/?#[\]@!$&'()*+,;=%]*)?/g,(u)=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`)}
+  function append(role,text){
+    const d=document.createElement('div');
+    d.className=role==='user'?'u':'a';
+    const safe=linkify(esc(text||''));
+    d.innerHTML=(role==='user'?'<b>You:</b> ':'<b>Assistant:</b> ')+safe;
+    log.appendChild(d);log.scrollTop=log.scrollHeight;
+  }
   async function postChat(text){
     const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({thread,message:text})});
     const j=await r.json(); thread=j.thread; return j.answer;
