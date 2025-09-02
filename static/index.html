@@ -2,14 +2,68 @@
 <meta charset="utf-8" />
 <title>LM Studio Web Chat</title>
 <style>
-  body{font:14px system-ui,sans-serif;margin:0;background:#111;color:#eee}
-  #wrap{max-width:800px;margin:24px auto;padding:0 16px}
-  #log{border:1px solid #333;padding:12px;min-height:360px;background:#0c0c0c}
-  .u{color:#9ad;margin:8px 0;white-space:pre-wrap}
-  .a{color:#cfc;margin:8px 0;white-space:pre-wrap}
-  #bar{display:flex;gap:8px;margin-top:12px}
-  textarea{flex:1;height:70px;background:#181818;color:#eee;border:1px solid #333;padding:8px}
-  button{width:120px;background:#2a6;color:#fff;border:0;cursor:pointer}
+  :root{
+    --bg:#0b0f13;       /* page background */
+    --panel:#0f141b;    /* panels */
+    --muted:#202938;    /* borders, subtle accents */
+    --text:#e6eaf0;     /* primary text */
+    --accent:#3b82f6;   /* primary action */
+    --accent-2:#2563eb; /* hover */
+    --u-bubble:#1f2a44; /* user bubble */
+    --a-bubble:#14261a; /* assistant bubble */
+  }
+  *{box-sizing:border-box}
+  body{font:14px system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,sans-serif;margin:0;background:linear-gradient(180deg,#0a0e12, #0b1016 40%, #0b0f13);color:var(--text)}
+  #wrap{max-width:900px;margin:28px auto;padding:0 18px}
+  h2{font-weight:600;letter-spacing:.2px;margin:16px 0 12px;color:#f3f6fb}
+
+  #log{
+    border:1px solid var(--muted);
+    padding:16px;
+    min-height:420px;
+    background:var(--panel);
+    border-radius:12px;
+    box-shadow:0 8px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.02);
+    display:flex;flex-direction:column;gap:10px;overflow:auto
+  }
+  /* Make links in chat white */
+  #log a,#log a:visited{color:#fff}
+  #log a:hover{color:#f3f6fb;text-decoration:underline;text-underline-offset:2px}
+  .u,.a{white-space:pre-wrap;max-width:85%;padding:10px 12px;border-radius:12px;line-height:1.35}
+  .u{align-self:flex-end;background:var(--u-bubble);color:#eaf3ff;box-shadow:0 2px 8px rgba(8,20,40,.35)}
+  .a{align-self:flex-start;background:var(--a-bubble);color:#e6ffe6;box-shadow:0 2px 8px rgba(0,30,10,.35)}
+  .u b,.a b{opacity:.85}
+  /* Markdown blocks inside bubbles */
+  .md{white-space:normal}
+  .md p{margin:6px 0}
+  .md ul,.md ol{margin:6px 0 6px 18px}
+  .md li{margin:4px 0}
+  .md code{background:rgba(255,255,255,.08);padding:2px 4px;border-radius:4px}
+  .md pre{background:rgba(0,0,0,.35);padding:8px 10px;border-radius:8px;overflow:auto}
+  .md h1,.md h2{margin:6px 0 4px}
+  .md h3,.md h4,.md h5,.md h6{margin:6px 0 2px}
+
+  #bar{display:flex;gap:10px;margin-top:14px;align-items:flex-end}
+  textarea{
+    flex:1;min-height:56px;max-height:160px;resize:none;overflow:auto;
+    background:#0e131a;color:var(--text);
+    border:1px solid var(--muted);border-radius:10px;padding:10px 12px;
+    outline:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
+    transition:border-color .15s ease, box-shadow .15s ease
+  }
+  textarea::placeholder{color:#9aa8bf}
+  textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.25),inset 0 1px 0 rgba(255,255,255,.02)}
+
+  button{
+    min-width:120px;height:40px;padding:0 14px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(180deg,var(--accent),var(--accent-2));
+    color:#fff;border:1px solid #1d4ed8;border-radius:10px;cursor:pointer;
+    font-weight:600;letter-spacing:.2px;box-shadow:0 6px 16px rgba(37,99,235,.35);
+    transition:transform .06s ease, filter .2s ease, opacity .2s ease
+  }
+  button:hover{filter:brightness(1.05)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.6;cursor:not-allowed;filter:grayscale(.2)}
 </style>
 <div id="wrap">
   <h2>LM Studio Web Chat</h2>
@@ -19,23 +73,56 @@
     <button id="send">Send</button>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
 <script>
   const log=document.getElementById('log'),msg=document.getElementById('msg'),send=document.getElementById('send');let thread=null;
   function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
-  function linkify(s){return s.replace(/https?:\/\/[\w.-]+(?:\/[\w\-._~:/?#[\]@!$&'()*+,;=%]*)?/g,(u)=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`)}
+  // Markdown renderer (loaded below via CDN)
+  let md=null;
+  function renderMarkdown(s){
+    if(!md && window.markdownit){
+      md=window.markdownit({html:false,linkify:true,typographer:true,breaks:true});
+    }
+    const raw = md ? md.render(String(s||'')) : String(s||'');
+    // Sanitize the produced HTML
+    return (window.DOMPurify ? window.DOMPurify.sanitize(raw) : raw);
+  }
   function append(role,text){
     const d=document.createElement('div');
-    d.className=role==='user'?'u':'a';
-    const safe=linkify(esc(text||''));
+    d.className=(role==='user'?'u':'a')+' md';
+    const safe=renderMarkdown(text||'');
     d.innerHTML=(role==='user'?'<b>You:</b> ':'<b>Assistant:</b> ')+safe;
     log.appendChild(d);log.scrollTop=log.scrollHeight;
+    // Ensure links open in a new tab safely
+    d.querySelectorAll('a').forEach(a=>{a.target='_blank';a.rel='noopener';});
   }
   async function postChat(text){
     const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({thread,message:text})});
     const j=await r.json(); thread=j.thread; return j.answer;
   }
-  send.onclick=async()=>{const t=msg.value.trim();if(!t)return;append('user',t);msg.value='';send.disabled=true;send.textContent='…';
+  function autoresize(){
+    msg.style.height='auto';
+    const h=Math.min(160, msg.scrollHeight);
+    msg.style.height=h+'px';
+    // Match send button height to textarea
+    send.style.height=h+'px';
+  }
+  msg.addEventListener('input',autoresize);
+  window.addEventListener('resize',autoresize);
+
+  send.onclick=async()=>{const t=msg.value.trim();if(!t)return;append('user',t);msg.value='';autoresize();send.disabled=true;send.textContent='…';
     try{const a=await postChat(t);append('assistant',a||'[no content]');}catch(e){append('assistant','Error: '+(e.message||e));}
     finally{send.disabled=false;send.textContent='Send';}};
-  msg.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter')send.click();});
+  // Enter to send, Shift+Enter for newline
+  msg.addEventListener('keydown',e=>{
+    if(e.isComposing) return; // respect IME composition
+    if(e.key==='Enter'){
+      if(e.shiftKey){return;} // allow newline
+      e.preventDefault();
+      send.click();
+    }
+  });
+  // Initialize correct height on load
+  autoresize();
 </script>
